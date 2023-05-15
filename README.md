@@ -1,6 +1,6 @@
 ML - Binary Classification
 
-Overview
+****Overview****
 
 The aim of this project is to develop a machine learning model to predict whether salary of an individual is greater than or equal to 50,000 or not, based on a set of input features. The target variable is a Binary value, and the problem is therefore a classification problem.
 
