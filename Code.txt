@@ -1,0 +1,312 @@
+"""This is a classification Problem 
+Objective is to predict whether an individual earns an income >= 50000  or not (1 or 0)
+I used XGBClassifier of xgboost as my ML model
+xgb_params are inspired from my work on kaggle competitons "Spaceship Titanic".
+
+requirements = "sklearn", "xgboost", "pandas", "numpy", "matplotlib", "seaborn" """
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from pandas.api.types import CategoricalDtype
+
+train_data = pd.read_csv("train.csv")
+test_data = pd.read_csv("test.csv")
+
+## EDA
+
+train_data.head()
+
+train_data.info()
+
+train_data.describe()
+
+# we will drop the columns that are not useful I think ["fnlwgt", "educational-num", "marital-status",  "relationship"]
+train_data[train_data["income_>50K"] == 1] 
+
+# we will make a copy of train_data and we will proceed with that copy
+X = train_data.copy()
+
+### Drop not useful features
+
+drop_cols = ["fnlwgt", "educational-num", "marital-status",  "relationship"]
+def drop_features(df):
+    
+    try:
+        df.drop(drop_cols, axis=1, inplace=True)
+    except Exception as e:
+        e
+        
+    return df
+
+X = drop_features(X)
+
+X
+
+### Detecting outliers
+
+X["capital-gain"].value_counts()
+
+X["capital-gain"].mean()
+
+# To find outliers
+plt.boxplot(X["capital-gain"])
+
+X[(X["capital-gain"] == 99999)]
+
+ X[(X["capital-gain"] >= 99999) & (X["income_>50K"] == 1)]
+
+# since 99999 is too much away from the data we will replace it with next value which is 15024
+def outlier(df):
+    df["capital-gain"] = df["capital-gain"].replace({99999:15024})
+    return df
+
+X = outlier(X)
+
+# By removing 1 outlier alone reduces the mean
+X["capital-gain"].mean()
+
+## Splitting the Dataset
+
+from sklearn.model_selection import train_test_split
+
+# seperate dependent feature and independent features
+y = X.pop("income_>50K")
+
+# split the dataset into train dataset and test dataset in 80:20 ratio, randomly
+train_X, valid_X, train_y, valid_y = train_test_split(X, y, test_size=0.2, random_state=0)
+
+train_X
+
+valid_X
+
+## Encoding and Dealing with missing values
+
+# Differentiate numerical features and Categorical features
+obj_cols = [col for col in X.select_dtypes("object")]
+num_cols = list(set(X.columns) - set(obj_cols))
+
+X[obj_cols]
+
+# unordered categorical features are called nominal features 
+features_nom = ["race", "gender", "native-country", "occupation"]
+
+# ordered categorical features are called ordinal features
+features_ord = ["workclass", "education"]
+
+X["workclass"].value_counts()
+
+#Pandas calls the ordinal categories as levels
+work_class_levels = [
+    "Federal-gov", 
+    "State-gov", 
+    "Local-gov", 
+    "Private", 
+    "Self-emp-inc", 
+    "Self-emp-not-inc", 
+    "Without-pay", 
+    "Never-worked",
+]
+
+X["education"].value_counts()
+
+edu_class_levels = [
+    "Doctorate", 
+    "Masters", 
+    "Bachelors", 
+    "Assoc-voc", 
+    "Assoc-acdm", 
+    "HS-grad", 
+    "Some-college", 
+    "12th", 
+    "11th",
+    "Prof-school",
+    "10th",
+    "9th",
+    "7th-8th",
+    "5th-6th",
+    "1st-4th",
+    "Preschool",
+
+]
+
+ordered_levels = {
+    "workclass" : work_class_levels,
+    "education" : edu_class_levels,
+}
+
+# add None level for missing values
+ordered_levels = {key : ["None"] + value for key, value in ordered_levels.items()}
+
+ordered_levels
+
+# Encode the statistical Data Type
+# Pandas has Python Data types corresponding to the standard statistical types (numerical, categorical, ...)
+# Encoding each feature will make it easier for us to apply transformations consistently
+# Numeric features are already encoded correctly
+def encode(df):
+    # nominal categories
+    for col in features_nom:
+        df[col] = df[col].astype("category")
+        #Add a None category for missing values
+        if "None" not in df[col].cat.categories:
+            df[col].cat.add_categories("None", inplace=True)
+            
+    #Ordinal categories
+    for col, levels in ordered_levels.items():
+        df[col] = df[col].astype(CategoricalDtype(levels, ordered=True))
+    return df
+
+# Handling missing values, we'll impute 0 for missing numeric values and
+#"None" for missing categorical values
+
+def impute(df):
+    for col in df.select_dtypes("number"):
+        df[col] = df[col].fillna(0)
+    for col in df.select_dtypes("category"):
+        df[col] = df[col].fillna("None")
+        
+    return df
+
+def encode_impute(df_train, df_valid):
+    #Merge the splits
+    df = pd.concat([df_train, df_valid])
+    
+    #preprocessing
+    df = encode(df)
+    df = impute(df)
+    
+    #Reform splits
+    df_train = df.loc[df_train.index, :]
+    df_valid = df.loc[df_valid.index, :]
+    
+    return df_train, df_valid
+
+train_X, valid_X = encode_impute(train_X, valid_X)
+
+train_X
+
+train_X.isnull().any()
+
+valid_X
+
+train_X.isnull().any()
+
+### Ordinal and OneHot Encoding
+
+# import
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+
+# creating the encoder objects
+ohe = OneHotEncoder(handle_unknown="ignore", sparse=False)
+oe = OrdinalEncoder(handle_unknown="error")
+
+# we have to fit_transform the train_dataset 
+def train_encoder(df):
+    # Ordinal Encoding
+    df[features_ord] = oe.fit_transform(df[features_ord])
+    
+    # OneHotEncoding
+    enc = pd.DataFrame(ohe.fit_transform(df[features_nom]), columns=ohe.get_feature_names_out())
+    enc_X = pd.concat([df.reset_index(), enc], axis=1)
+    enc_X.index = df.index
+    enc_X.drop(features_nom, axis=1, inplace=True)
+    enc_X.drop("index", axis=1, inplace=True)
+    
+    return enc_X
+
+# we have to transform the test_dataset or validation_dataset 
+def test_encoder(df):
+    # Ordinal Encoding
+    df[features_ord] = oe.transform(df[features_ord])
+    
+    # OneHotEncoding
+    enc = pd.DataFrame(ohe.transform(df[features_nom]), columns=ohe.get_feature_names_out())
+    enc_X = pd.concat([df.reset_index(), enc], axis=1)
+    enc_X.index = df.index
+    enc_X.drop(features_nom, axis=1, inplace=True)
+    enc_X.drop("index", axis=1, inplace=True)
+    
+    return enc_X
+    
+
+train_X = train_encoder(train_X)
+
+train_X
+
+valid_X  = test_encoder(valid_X)
+
+valid_X
+
+## Model creation - XGBClassifier 
+
+from xgboost import XGBClassifier
+
+
+xgb_params = {
+    'max_depth': 9, 
+    'learning_rate': 0.0027660633169063423, 
+    'n_estimators': 2965, 
+    'min_child_weight': 4, 
+    'colsample_bytree': 0.6019996714560173, 
+    'subsample': 0.9990819155629611, 
+    'reg_alpha': 7.052473239736642, 
+    'num_parallel_tree': 1,
+}
+
+model = XGBClassifier(**xgb_params)
+
+model.fit(train_X, train_y)
+
+predicted_values = model.predict(valid_X)
+
+predicted_values
+
+### Metrics
+
+#### Confusion Matrix
+
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, PrecisionRecallDisplay
+
+c_matrix = confusion_matrix(valid_y, predicted_values)
+
+print(c_matrix)
+
+ConfusionMatrixDisplay.from_estimator(model, valid_X, valid_y)
+
+PrecisionRecallDisplay.from_estimator(model, valid_X, valid_y)
+
+#### Classification_report
+
+from sklearn.metrics import classification_report
+
+cl_report = classification_report(valid_y, predicted_values)
+
+print(cl_report)
+
+## Generating the results
+
+def predictions(df):
+    df = drop_features(df)
+    df = outlier(df)
+    df = encode(df)
+    df = impute(df)
+    df = test_encoder(df)
+    print(df)
+    prediction_results = model.predict(df)
+    submission = pd.DataFrame({"id": df.index, "outcome":prediction_results})
+    return submission   
+
+submissions = predictions(test_data)
+
+print(submissions)
+
+submissions.to_csv("Submissions_outcome.csv", index=False)
+
+
+
+
+
+
+
