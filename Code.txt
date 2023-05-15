@@ -239,7 +239,9 @@ valid_X  = test_encoder(valid_X)
 
 valid_X
 
-## Model creation - XGBClassifier 
+# Models
+
+## Model - XGBClassifier 
 
 from xgboost import XGBClassifier
 
@@ -285,6 +287,67 @@ cl_report = classification_report(valid_y, predicted_values)
 
 print(cl_report)
 
+## Model - RandomForestClassifier
+
+from sklearn.ensemble import RandomForestClassifier
+
+model_rf = RandomForestClassifier(n_estimators=500, max_depth=10)
+
+model_rf.fit(train_X, train_y)
+
+predictions_rf = model_rf.predict(valid_X)
+
+predictions_rf
+
+### Metrics
+
+#### Confusion Matrix
+
+cm_rf = confusion_matrix(valid_y, predictions_rf)
+
+cm_rf
+
+ConfusionMatrixDisplay.from_predictions(valid_y, predictions_rf)
+
+PrecisionRecallDisplay.from_estimator(model_rf, valid_X, valid_y)
+
+#### Classification report
+
+cl_report_rf = classification_report(valid_y, predictions_rf)
+
+print(cl_report_rf)
+
+## Model - SVC
+
+from sklearn.svm import SVC
+
+model_svc = SVC(kernel='rbf')
+
+model_svc.fit(train_X, train_y)
+
+prediction_svc = model_svc.predict(valid_X)
+
+prediction_svc
+
+### Metrics
+
+#### Confusion Matrix
+
+
+cm_svc = confusion_matrix(valid_y, prediction_svc)
+
+cm_svc
+
+ConfusionMatrixDisplay.from_predictions(valid_y, prediction_svc)
+
+PrecisionRecallDisplay.from_estimator(model_svc, valid_X, valid_y)
+
+#### Classification report
+
+cl_report_svc = classification_report(valid_y, prediction_svc)
+
+print(cl_report_svc)
+
 ## Generating the results
 
 def predictions(df):
@@ -303,6 +366,12 @@ submissions = predictions(test_data)
 print(submissions)
 
 submissions.to_csv("Submissions_outcome.csv", index=False)
+
+
+
+
+
+
 
 
 
